@@ -14,6 +14,16 @@ import (
 	"github.com/darkLord19/wtx/internal/metadata"
 )
 
+// WorktreeAction represents the action to perform
+type WorktreeAction int
+
+const (
+	ActionNone WorktreeAction = iota
+	ActionCreate
+	ActionDelete
+	ActionPrune
+)
+
 // worktreeManagerModel is the TUI model for worktree management
 type worktreeManagerModel struct {
 	list         list.Model

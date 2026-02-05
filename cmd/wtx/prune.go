@@ -60,8 +60,7 @@ var pruneCmd = &cobra.Command{
 		fmt.Print("\nDelete all? [y/N]: ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {
-			fmt.Println("Cancelled")
-			return nil
+			return nil // Treat input error as cancel
 		}
 
 		if response != "y" && response != "Y" {

@@ -52,12 +52,10 @@ var addCmd = &cobra.Command{
 		// Ask if user wants to open now
 		fmt.Print("\nOpen in editor now? [Y/n]: ")
 		var response string
-		if _, err := fmt.Scanln(&response); err != nil {
-			// If error is not unexpected newline (Enter key), treat as "no"
-			if err.Error() != "unexpected newline" {
-				return nil
-			}
-		}
+		// We explicitly ignore the error from Scanln here because if the user just hits Enter,
+		// Scanln returns an error (unexpected newline) but we want to treat that as "empty input"
+		// which results in the default behavior (opening the editor).
+		_, _ = fmt.Scanln(&response)
 
 		if response == "" || response == "y" || response == "Y" {
 			ed, err := edDetector.GetPreferred()
