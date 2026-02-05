@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+var (
+	benchmarkResultItems    []WorktreeItem
+	benchmarkResultPointers []*WorktreeItem
+)
+
 // BenchmarkPruneSearchNested mimics the current logic in enterPruneMode
 func BenchmarkPruneSearchNested(b *testing.B) {
 	// Setup scenarios
@@ -43,6 +48,7 @@ func BenchmarkPruneSearchNested(b *testing.B) {
 						}
 					}
 				}
+				benchmarkResultItems = found
 			}
 		})
 	}
@@ -92,6 +98,7 @@ func BenchmarkPruneSearchMap(b *testing.B) {
 						}
 					}
 				}
+				benchmarkResultItems = found
 			}
 		})
 	}
@@ -141,6 +148,7 @@ func BenchmarkPruneSearchMapPointer(b *testing.B) {
 						}
 					}
 				}
+				benchmarkResultPointers = found
 			}
 		})
 	}
