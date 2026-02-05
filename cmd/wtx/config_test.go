@@ -20,14 +20,18 @@ func TestConfigSet(t *testing.T) {
 	}()
 
 	os.Setenv("HOME", tmpDir)
-	// Force UserConfigDir to use our tmpDir by setting XDG_CONFIG_HOME
-	// or ensuring HOME is used if XDG_CONFIG_HOME is empty/unset.
-	// Best practice: set XDG_CONFIG_HOME to tmpDir/.config
+	// We might still set XDG_CONFIG_HOME for Linux, but we'll ask os.UserConfigDir where to look.
 	configHome := filepath.Join(tmpDir, ".config")
 	os.Setenv("XDG_CONFIG_HOME", configHome)
 
+	// Determine where the app will look for config
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Setup config dir
-	configDir := filepath.Join(configHome, "wtx")
+	configDir := filepath.Join(userConfigDir, "wtx")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatal(err)
 	}
