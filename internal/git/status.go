@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Status represents the git status of a worktree
@@ -51,6 +52,35 @@ func (m *Manager) GetStatus(worktreePath string) (*Status, error) {
 	// Ignore error if no upstream is set
 
 	return status, nil
+}
+
+// GetStatuses returns the status for multiple worktrees concurrently
+func (m *Manager) GetStatuses(worktrees []Worktree) map[string]*Status {
+	results := make(map[string]*Status)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Limit concurrency to avoid resource exhaustion
+	semaphore := make(chan struct{}, 20)
+
+	for _, wt := range worktrees {
+		wg.Add(1)
+		go func(wt Worktree) {
+			defer wg.Done()
+			semaphore <- struct{}{}        // Acquire
+			defer func() { <-semaphore }() // Release
+
+			status, err := m.GetStatus(wt.Path)
+			if err == nil {
+				mu.Lock()
+				results[wt.Path] = status
+				mu.Unlock()
+			}
+		}(wt)
+	}
+
+	wg.Wait()
+	return results
 }
 
 // IsClean checks if a worktree has no uncommitted changes
