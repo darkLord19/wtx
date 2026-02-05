@@ -53,8 +53,10 @@ var addCmd = &cobra.Command{
 		fmt.Print("\nOpen in editor now? [Y/n]: ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {
-			// treat error as "no"
-			return nil
+			// If error is not unexpected newline (Enter key), treat as "no"
+			if err.Error() != "unexpected newline" {
+				return nil
+			}
 		}
 
 		if response == "" || response == "y" || response == "Y" {
