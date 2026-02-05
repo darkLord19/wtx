@@ -24,6 +24,12 @@ const (
 	ActionPrune
 )
 
+type worktreeStatusMsg struct {
+	name   string
+	status *git.Status
+	err    error
+}
+
 // worktreeManagerModel is the TUI model for worktree management
 type worktreeManagerModel struct {
 	list         list.Model
@@ -71,8 +77,6 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 	wtItems := make([]WorktreeItem, 0, len(worktrees))
 
 	for _, wt := range worktrees {
-		status, _ := gitMgr.GetStatus(wt.Path)
-
 		var meta *metadata.WorktreeMetadata
 		if m, ok := metaStore.Get(wt.Name); ok {
 			meta = m
@@ -82,7 +86,7 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 			Name:     wt.Name,
 			Path:     wt.Path,
 			Branch:   wt.Branch,
-			Status:   status,
+			Status:   nil,
 			Metadata: meta,
 			IsMain:   wt.IsMain,
 		}
@@ -129,7 +133,18 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 }
 
 func (m *worktreeManagerModel) Init() tea.Cmd {
-	return nil
+	var cmds []tea.Cmd
+	for _, item := range m.items {
+		cmds = append(cmds, m.checkStatusCmd(item.Name, item.Path))
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *worktreeManagerModel) checkStatusCmd(name, path string) tea.Cmd {
+	return func() tea.Msg {
+		status, err := m.gitMgr.GetStatus(path)
+		return worktreeStatusMsg{name: name, status: status, err: err}
+	}
 }
 
 func (m *worktreeManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -139,6 +154,24 @@ func (m *worktreeManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.list.SetWidth(msg.Width)
 		m.list.SetHeight(msg.Height - 6)
+		return m, nil
+
+	case worktreeStatusMsg:
+		if msg.err != nil {
+			return m, nil
+		}
+
+		// Update item status
+		var updatedItems []list.Item
+		for i, item := range m.items {
+			if item.Name == msg.name {
+				m.items[i].Status = msg.status
+				// Need to update list items as well
+			}
+			updatedItems = append(updatedItems, m.items[i])
+		}
+
+		m.list.SetItems(updatedItems)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -500,10 +533,9 @@ func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
 
 	items := make([]list.Item, 0, len(worktrees))
 	m.items = make([]WorktreeItem, 0, len(worktrees))
+	var cmds []tea.Cmd
 
 	for _, wt := range worktrees {
-		status, _ := m.gitMgr.GetStatus(wt.Path)
-
 		var meta *metadata.WorktreeMetadata
 		if mt, ok := m.metaStore.Get(wt.Name); ok {
 			meta = mt
@@ -513,17 +545,18 @@ func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
 			Name:     wt.Name,
 			Path:     wt.Path,
 			Branch:   wt.Branch,
-			Status:   status,
+			Status:   nil,
 			Metadata: meta,
 			IsMain:   wt.IsMain,
 		}
 
 		items = append(items, item)
 		m.items = append(m.items, item)
+		cmds = append(cmds, m.checkStatusCmd(item.Name, item.Path))
 	}
 
 	m.list.SetItems(items)
-	return m, nil
+	return m, tea.Batch(cmds...)
 }
 
 func (m *worktreeManagerModel) setMessage(msg string, isError bool) {
