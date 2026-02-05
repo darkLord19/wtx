@@ -67,7 +67,7 @@ func TestConfigSet(t *testing.T) {
 		},
 		{
 			name: "Set ReuseWindow True",
-			args: []string{"reuse_window", "true"},
+			args: []string{"editor", "reuse_window", "true"},
 			verify: func(t *testing.T) {
 				if !cfg.ReuseWindow {
 					t.Error("expected reuse_window true")
@@ -77,7 +77,7 @@ func TestConfigSet(t *testing.T) {
 		},
 		{
 			name: "Set ReuseWindow False",
-			args: []string{"reuse_window", "false"},
+			args: []string{"editor", "reuse_window", "false"},
 			verify: func(t *testing.T) {
 				if cfg.ReuseWindow {
 					t.Error("expected reuse_window false")
@@ -117,7 +117,7 @@ func TestConfigSet(t *testing.T) {
 		},
 		{
 			name: "Invalid ReuseWindow",
-			args: []string{"reuse_window", "foo"},
+			args: []string{"editor", "reuse_window", "foo"},
 			verify: func(t *testing.T) {},
 			wantErr: true,
 		},

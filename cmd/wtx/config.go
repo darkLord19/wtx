@@ -74,6 +74,18 @@ var configCmd = &cobra.Command{
 				}
 				fmt.Printf("Set custom command '%s' to '%s'\n", name, command)
 				return nil
+			} else if len(args) == 3 && args[1] == "reuse_window" {
+				// wtx config editor reuse_window <true|false>
+				val, err := strconv.ParseBool(args[2])
+				if err != nil {
+					return fmt.Errorf("invalid boolean value: %s", args[2])
+				}
+				cfg.ReuseWindow = val
+				if err := cfg.Save(); err != nil {
+					return fmt.Errorf("failed to save config: %w", err)
+				}
+				fmt.Printf("Set reuse_window to %v\n", val)
+				return nil
 			} else if len(args) == 2 {
 				// wtx config editor <value>
 				val := args[1]
@@ -93,23 +105,8 @@ var configCmd = &cobra.Command{
 				fmt.Printf("Set editor to '%s'\n", val)
 				return nil
 			} else {
-				return fmt.Errorf("invalid arguments for editor config.\nUsage: \n  wtx config editor <value>\n  wtx config editor custom_command <name> <command>")
+				return fmt.Errorf("invalid arguments for editor config.\nUsage: \n  wtx config editor <value>\n  wtx config editor custom_command <name> <command>\n  wtx config editor reuse_window <true|false>")
 			}
-
-		case "reuse_window":
-			if len(args) != 2 {
-				return fmt.Errorf("usage: wtx config reuse_window <true|false>")
-			}
-			val, err := strconv.ParseBool(args[1])
-			if err != nil {
-				return fmt.Errorf("invalid boolean value: %s", args[1])
-			}
-			cfg.ReuseWindow = val
-			if err := cfg.Save(); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
-			}
-			fmt.Printf("Set reuse_window to %v\n", val)
-			return nil
 
 		case "worktree_dir":
 			if len(args) != 2 {
