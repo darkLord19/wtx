@@ -30,11 +30,9 @@ type worktreeManagerModel struct {
 	items        []WorktreeItem
 	gitMgr       *git.Manager
 	metaStore    *metadata.Store
-	action       WorktreeAction
 	width        int
 	height       int
 	quitting     bool
-	err          error
 	message      string
 	messageStyle lipgloss.Style
 
@@ -66,16 +64,12 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}
 
+	// Fetch statuses in parallel
+	statuses := gitMgr.GetStatuses(worktrees)
+
 	// Build items
 	items := make([]list.Item, 0, len(worktrees))
 	wtItems := make([]WorktreeItem, 0, len(worktrees))
-
-	// Get statuses in parallel
-	paths := make([]string, len(worktrees))
-	for i, wt := range worktrees {
-		paths[i] = wt.Path
-	}
-	statuses := gitMgr.GetStatuses(paths)
 
 	for _, wt := range worktrees {
 		status := statuses[wt.Path]
@@ -508,12 +502,7 @@ func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
 	items := make([]list.Item, 0, len(worktrees))
 	m.items = make([]WorktreeItem, 0, len(worktrees))
 
-	// Get statuses in parallel
-	paths := make([]string, len(worktrees))
-	for i, wt := range worktrees {
-		paths[i] = wt.Path
-	}
-	statuses := m.gitMgr.GetStatuses(paths)
+	statuses := m.gitMgr.GetStatuses(worktrees)
 
 	for _, wt := range worktrees {
 		status := statuses[wt.Path]

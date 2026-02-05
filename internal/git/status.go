@@ -54,32 +54,53 @@ func (m *Manager) GetStatus(worktreePath string) (*Status, error) {
 	return status, nil
 }
 
-// GetStatuses returns the git status for multiple worktrees concurrently
-func (m *Manager) GetStatuses(worktreePaths []string) map[string]*Status {
+// GetStatuses returns the status for multiple worktrees concurrently.
+// It uses a bounded worker pool to limit resource usage.
+// Returns a map of worktree path -> Status.
+func (m *Manager) GetStatuses(worktrees []Worktree) map[string]*Status {
 	results := make(map[string]*Status)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	// Limit concurrency to avoid spawning too many processes
-	sem := make(chan struct{}, 10)
-
-	for _, path := range worktreePaths {
-		wg.Add(1)
-		sem <- struct{}{} // Acquire token
-		go func(p string) {
-			defer wg.Done()
-			defer func() { <-sem }() // Release token
-
-			status, err := m.GetStatus(p)
-			if err == nil {
-				mu.Lock()
-				results[p] = status
-				mu.Unlock()
-			}
-		}(path)
+	// Worker pool size
+	maxWorkers := 10
+	if len(worktrees) < maxWorkers {
+		maxWorkers = len(worktrees)
+	}
+	if maxWorkers == 0 {
+		return results
 	}
 
+	workChan := make(chan Worktree, len(worktrees))
+
+	// Start workers
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for wt := range workChan {
+				status, err := m.GetStatus(wt.Path)
+				if err != nil {
+					// Mimic original behavior: if error, result is nil (missing from map)
+					continue
+				}
+
+				mu.Lock()
+				results[wt.Path] = status
+				mu.Unlock()
+			}
+		}()
+	}
+
+	// Enqueue work
+	for _, wt := range worktrees {
+		workChan <- wt
+	}
+	close(workChan)
+
+	// Wait for completion
 	wg.Wait()
+
 	return results
 }
 

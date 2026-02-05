@@ -53,7 +53,9 @@ var rmCmd = &cobra.Command{
 				fmt.Print("\nYour choice [c/f]: ")
 
 				var choice string
-				fmt.Scanln(&choice)
+				if _, err := fmt.Scanln(&choice); err != nil {
+					return nil // Treat input error as cancel
+				}
 
 				if choice != "f" && choice != "F" {
 					fmt.Println("Cancelled")
