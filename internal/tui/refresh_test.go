@@ -29,8 +29,12 @@ func setupTestRepo(t *testing.T) (string, *git.Manager, *metadata.Store) {
 	}
 
 	// Configure git user for commits
-	exec.Command("git", "-C", dir, "config", "user.email", "you@example.com").Run()
-	exec.Command("git", "-C", dir, "config", "user.name", "Your Name").Run()
+	if err := exec.Command("git", "-C", dir, "config", "user.email", "you@example.com").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("git", "-C", dir, "config", "user.name", "Your Name").Run(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Commit initial file
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("test"), 0644); err != nil {
