@@ -17,6 +17,9 @@ import (
 // WorktreeAction represents the action to perform
 type WorktreeAction int
 
+type worktreeListMsg []WorktreeItem
+type worktreeListErrorMsg error
+
 const (
 	ActionNone WorktreeAction = iota
 	ActionCreate
@@ -155,6 +158,22 @@ func (m *worktreeManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handlePruneKeys(msg)
 		}
 		return m.handleMainKeys(msg)
+
+	case worktreeListMsg:
+		m.items = msg
+		items := make([]list.Item, len(msg))
+		for i, item := range msg {
+			if meta, ok := m.metaStore.Get(item.Name); ok {
+				m.items[i].Metadata = meta
+			}
+			items[i] = m.items[i]
+		}
+		m.list.SetItems(items)
+		return m, nil
+
+	case worktreeListErrorMsg:
+		m.setMessage(fmt.Sprintf("Failed to refresh: %v", msg), true)
+		return m, nil
 	}
 
 	// Update text inputs if in create mode
@@ -492,38 +511,28 @@ func (m *worktreeManagerModel) executePrune() (tea.Model, tea.Cmd) {
 }
 
 func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
-	worktrees, err := m.gitMgr.List()
-	if err != nil {
-		m.setMessage(fmt.Sprintf("Failed to refresh: %v", err), true)
-		return m, nil
-	}
-
-	items := make([]list.Item, 0, len(worktrees))
-	m.items = make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status, _ := m.gitMgr.GetStatus(wt.Path)
-
-		var meta *metadata.WorktreeMetadata
-		if mt, ok := m.metaStore.Get(wt.Name); ok {
-			meta = mt
+	return m, func() tea.Msg {
+		worktrees, err := m.gitMgr.List()
+		if err != nil {
+			return worktreeListErrorMsg(err)
 		}
 
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
+		items := make([]WorktreeItem, 0, len(worktrees))
+		for _, wt := range worktrees {
+			status, _ := m.gitMgr.GetStatus(wt.Path)
+
+			// We don't access metadata store here to avoid race conditions
+			item := WorktreeItem{
+				Name:   wt.Name,
+				Path:   wt.Path,
+				Branch: wt.Branch,
+				Status: status,
+				IsMain: wt.IsMain,
+			}
+			items = append(items, item)
 		}
-
-		items = append(items, item)
-		m.items = append(m.items, item)
+		return worktreeListMsg(items)
 	}
-
-	m.list.SetItems(items)
-	return m, nil
 }
 
 func (m *worktreeManagerModel) setMessage(msg string, isError bool) {
