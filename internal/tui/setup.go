@@ -43,6 +43,8 @@ type setupModel struct {
 
 	// Boolean selections
 	reuseWindowValue bool
+
+	err error
 }
 
 // NewSetupModel creates a new setup wizard model
@@ -222,7 +224,7 @@ func (m *setupModel) handleReuseWindowKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		m.step = StepComplete
 		// Save config
 		if err := m.config.Save(); err != nil {
-			fmt.Printf("Error saving config: %v\n", err)
+			m.err = err
 		}
 	}
 	return m, nil
@@ -400,11 +402,20 @@ func (m *setupModel) viewReuseWindow() string {
 func (m *setupModel) viewComplete() string {
 	var b strings.Builder
 
-	b.WriteString(lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#04B575")).
-		Render("✓ Setup Complete!"))
-	b.WriteString("\n\n")
+	if m.err != nil {
+		b.WriteString(lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FF6B6B")).
+			Render("⚠ Setup Complete with Warning"))
+		b.WriteString("\n\n")
+		b.WriteString(fmt.Sprintf("Failed to save configuration: %v\n\n", m.err))
+	} else {
+		b.WriteString(lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#04B575")).
+			Render("✓ Setup Complete!"))
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString("Your configuration:\n\n")
 

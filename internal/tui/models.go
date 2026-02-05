@@ -34,9 +34,9 @@ func (w WorktreeItem) Description() string {
 	// Status indicators
 	if w.Status != nil {
 		if w.Status.Clean {
-			desc += "● clean"
+			desc += cleanStyle.Render("● clean")
 		} else {
-			desc += "✗ dirty"
+			desc += dirtyStyle.Render("✗ dirty")
 		}
 
 		if w.Status.Ahead > 0 {
@@ -50,7 +50,7 @@ func (w WorktreeItem) Description() string {
 	// Ports
 	if w.Metadata != nil && len(w.Metadata.Ports) > 0 {
 		for _, port := range w.Metadata.Ports {
-			desc += fmt.Sprintf(" :%d", port)
+			desc += portStyle.Render(fmt.Sprintf(" :%d", port))
 		}
 	}
 
