@@ -38,18 +38,28 @@ func setupTestRepo(t *testing.T, numWorktrees int) (string, func(), error) {
 		return "", nil, err
 	}
 	// Force branch name to main (in case default is master)
-	git("symbolic-ref", "HEAD", "refs/heads/main")
+	if err := git("symbolic-ref", "HEAD", "refs/heads/main"); err != nil {
+		return "", nil, err
+	}
 
 	// Config user
-	git("config", "user.email", "test@example.com")
-	git("config", "user.name", "Test User")
+	if err := git("config", "user.email", "test@example.com"); err != nil {
+		return "", nil, err
+	}
+	if err := git("config", "user.name", "Test User"); err != nil {
+		return "", nil, err
+	}
 
 	// Create initial commit
 	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("# Test Repo"), 0644); err != nil {
 		return "", nil, err
 	}
-	git("add", "README.md")
-	git("commit", "-m", "Initial commit")
+	if err := git("add", "README.md"); err != nil {
+		return "", nil, err
+	}
+	if err := git("commit", "-m", "Initial commit"); err != nil {
+		return "", nil, err
+	}
 
 	// Create worktrees
 	for i := 0; i < numWorktrees; i++ {
@@ -140,10 +150,15 @@ func TestGetStatuses(t *testing.T) {
 	// Make one dirty
 	dirtyWT := worktrees[1] // worktrees[0] is usually main/bare, let's pick 1
 	if dirtyWT.IsMain {
-		// If 0 is main, pick 1. If 1 is main?
-		// List returns them in some order.
-		// Let's just iterate to find a non-bare one if needed, or just write to path.
+		// If 1 is also main (unlikely given setup), search for a non-main one
+		for _, wt := range worktrees {
+			if !wt.IsMain {
+				dirtyWT = wt
+				break
+			}
+		}
 	}
+
 	if err := os.WriteFile(filepath.Join(dirtyWT.Path, "dirty.txt"), []byte("dirty"), 0644); err != nil {
 		t.Fatalf("Failed to create dirty file: %v", err)
 	}
