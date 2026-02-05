@@ -13,12 +13,21 @@ func TestConfigSet(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("XDG_CONFIG_HOME", oldXDG)
+	}()
+
 	os.Setenv("HOME", tmpDir)
+	// Force UserConfigDir to use our tmpDir by setting XDG_CONFIG_HOME
+	// or ensuring HOME is used if XDG_CONFIG_HOME is empty/unset.
+	// Best practice: set XDG_CONFIG_HOME to tmpDir/.config
+	configHome := filepath.Join(tmpDir, ".config")
+	os.Setenv("XDG_CONFIG_HOME", configHome)
 
 	// Setup config dir
-	// On Linux, UserConfigDir is usually $HOME/.config
-	configDir := filepath.Join(tmpDir, ".config", "wtx")
+	configDir := filepath.Join(configHome, "wtx")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +37,9 @@ func TestConfigSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.WriteString("{}")
+	if _, err := f.WriteString("{}"); err != nil {
+		t.Fatal(err)
+	}
 	f.Close()
 
 	// Initialize global cfg to a clean default
