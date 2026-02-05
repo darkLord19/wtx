@@ -41,47 +41,71 @@ func (m *Manager) List() ([]Worktree, error) {
 
 // parseWorktreeList parses the output of git worktree list --porcelain
 func parseWorktreeList(output string) ([]Worktree, error) {
-	var worktrees []Worktree
-	var current *Worktree
+	// Pre-allocate slice by counting "worktree " lines
+	// This avoids slice reallocations as we append
+	count := strings.Count(output, "worktree ")
+	worktrees := make([]Worktree, 0, count)
 
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
+	var current Worktree
+	var inWorktree bool
+
+	// Iterate over lines using string slicing to avoid allocating strings for each line
+	for {
+		// Find next newline
+		nl := strings.IndexByte(output, '\n')
+		var line string
+		if nl == -1 {
+			line = output
+		} else {
+			line = output[:nl]
+		}
+
 		if line == "" {
-			if current != nil {
-				worktrees = append(worktrees, *current)
-				current = nil
+			if inWorktree {
+				worktrees = append(worktrees, current)
+				current = Worktree{} // Reset
+				inWorktree = false
 			}
-			continue
+		} else {
+			// Find space separator
+			sp := strings.IndexByte(line, ' ')
+			if sp != -1 {
+				key := line[:sp]
+				value := line[sp+1:]
+
+				switch key {
+				case "worktree":
+					current.Path = value
+					// filepath.Base allocates, but unavoidable for Name
+					current.Name = filepath.Base(value)
+					inWorktree = true
+				case "HEAD":
+					if inWorktree {
+						current.Head = value
+					}
+				case "branch":
+					if inWorktree {
+						// value is a slice of output, so this is allocation-free
+						// if TrimPrefix returns a subslice
+						current.Branch = strings.TrimPrefix(value, "refs/heads/")
+					}
+				case "bare":
+					if inWorktree {
+						current.IsMain = true
+					}
+				}
+			}
 		}
 
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) < 2 {
-			continue
+		if nl == -1 {
+			break
 		}
-
-		key, value := parts[0], parts[1]
-
-		switch key {
-		case "worktree":
-			current = &Worktree{Path: value}
-			current.Name = filepath.Base(value)
-		case "HEAD":
-			if current != nil {
-				current.Head = value
-			}
-		case "branch":
-			if current != nil {
-				current.Branch = strings.TrimPrefix(value, "refs/heads/")
-			}
-		case "bare":
-			if current != nil {
-				current.IsMain = true
-			}
-		}
+		output = output[nl+1:]
 	}
 
-	if current != nil {
-		worktrees = append(worktrees, *current)
+	// Handle the last worktree if the output didn't end with a blank line
+	if inWorktree {
+		worktrees = append(worktrees, current)
 	}
 
 	// Mark the first worktree as main if no bare repo
