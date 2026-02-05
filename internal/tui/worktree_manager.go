@@ -400,14 +400,19 @@ func (m *worktreeManagerModel) enterPruneMode() {
 
 	// Filter to only clean worktrees
 	m.staleItems = []WorktreeItem{}
+
+	itemMap := make(map[string]WorktreeItem, len(m.items))
+	for _, item := range m.items {
+		itemMap[item.Name] = item
+	}
+
 	for _, name := range staleNames {
-		for _, item := range m.items {
-			if item.Name == name && !item.IsMain {
+		if item, ok := itemMap[name]; ok {
+			if !item.IsMain {
 				clean, _ := m.gitMgr.IsClean(item.Path)
 				if clean {
 					m.staleItems = append(m.staleItems, item)
 				}
-				break
 			}
 		}
 	}
