@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"sync"
 
+	"github.com/darkLord19/wtx/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -21,15 +23,69 @@ var listCmd = &cobra.Command{
 			return nil
 		}
 
+		// Prepare for concurrent status checks
+		type statusResult struct {
+			index  int
+			status *git.Status
+			err    error
+		}
+
+		numWorkers := 10
+		if len(worktrees) < numWorkers {
+			numWorkers = len(worktrees)
+		}
+
+		jobs := make(chan int, len(worktrees))
+		results := make(chan statusResult, len(worktrees))
+		var wg sync.WaitGroup
+
+		// Start workers
+		for w := 0; w < numWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range jobs {
+					wt := worktrees[i]
+					status, err := gitMgr.GetStatus(wt.Path)
+					results <- statusResult{index: i, status: status, err: err}
+				}
+			}()
+		}
+
+		// Send jobs
+		for i := range worktrees {
+			jobs <- i
+		}
+		close(jobs)
+
+		// Close results channel when all workers are done
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		// Collect results
+		statuses := make([]*git.Status, len(worktrees))
+		statusErrors := make([]error, len(worktrees))
+		for res := range results {
+			statuses[res.index] = res.status
+			statusErrors[res.index] = res.err
+		}
+
 		fmt.Printf("%-20s %-30s %-10s %s\n", "NAME", "BRANCH", "STATUS", "PATH")
 		fmt.Println("────────────────────────────────────────────────────────────────────────────")
 
-		for _, wt := range worktrees {
-			status, _ := gitMgr.GetStatus(wt.Path)
+		for i, wt := range worktrees {
+			status := statuses[i]
+			err := statusErrors[i]
 
 			statusStr := "●"
 			statusText := "clean"
-			if status != nil && !status.Clean {
+
+			if err != nil {
+				statusStr = "?"
+				statusText = "error"
+			} else if status != nil && !status.Clean {
 				statusStr = "✗"
 				statusText = "dirty"
 			}
