@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/darkLord19/wtx/internal/git"
 	"github.com/darkLord19/wtx/internal/metadata"
@@ -60,35 +61,15 @@ type worktreeManagerModel struct {
 
 // NewWorktreeManagerModel creates a new worktree manager TUI model
 func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*worktreeManagerModel, error) {
-	// Load worktrees
-	worktrees, err := gitMgr.List()
+	wtItems, err := fetchWorktreeItems(gitMgr, metaStore)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+		return nil, err
 	}
 
 	// Build items
-	items := make([]list.Item, 0, len(worktrees))
-	wtItems := make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status, _ := gitMgr.GetStatus(wt.Path)
-
-		var meta *metadata.WorktreeMetadata
-		if m, ok := metaStore.Get(wt.Name); ok {
-			meta = m
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		wtItems = append(wtItems, item)
+	items := make([]list.Item, len(wtItems))
+	for i, item := range wtItems {
+		items[i] = item
 	}
 
 	// Create list
@@ -492,38 +473,59 @@ func (m *worktreeManagerModel) executePrune() (tea.Model, tea.Cmd) {
 }
 
 func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
-	worktrees, err := m.gitMgr.List()
+	wtItems, err := fetchWorktreeItems(m.gitMgr, m.metaStore)
 	if err != nil {
 		m.setMessage(fmt.Sprintf("Failed to refresh: %v", err), true)
 		return m, nil
 	}
 
-	items := make([]list.Item, 0, len(worktrees))
-	m.items = make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status, _ := m.gitMgr.GetStatus(wt.Path)
-
-		var meta *metadata.WorktreeMetadata
-		if mt, ok := m.metaStore.Get(wt.Name); ok {
-			meta = mt
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		m.items = append(m.items, item)
+	m.items = wtItems
+	items := make([]list.Item, len(wtItems))
+	for i, item := range wtItems {
+		items[i] = item
 	}
 
 	m.list.SetItems(items)
 	return m, nil
+}
+
+func fetchWorktreeItems(gitMgr *git.Manager, metaStore *metadata.Store) ([]WorktreeItem, error) {
+	worktrees, err := gitMgr.List()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+	}
+
+	items := make([]WorktreeItem, len(worktrees))
+	var eg errgroup.Group
+	eg.SetLimit(10) // Limit concurrency to avoid file descriptor exhaustion
+
+	for i, wt := range worktrees {
+		i, wt := i, wt
+		eg.Go(func() error {
+			status, _ := gitMgr.GetStatus(wt.Path)
+
+			var meta *metadata.WorktreeMetadata
+			if m, ok := metaStore.Get(wt.Name); ok {
+				meta = m
+			}
+
+			items[i] = WorktreeItem{
+				Name:     wt.Name,
+				Path:     wt.Path,
+				Branch:   wt.Branch,
+				Status:   status,
+				Metadata: meta,
+				IsMain:   wt.IsMain,
+			}
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 func (m *worktreeManagerModel) setMessage(msg string, isError bool) {
