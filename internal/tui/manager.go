@@ -77,6 +77,12 @@ const (
 	ManageModePrune
 )
 
+// WorktreeListMsg contains the list of worktrees fetched asynchronously
+type WorktreeListMsg struct {
+	Items []WorktreeItem
+	Err   error
+}
+
 // NewManagerModel creates a new manager TUI model
 func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config.Config, edDetector *editor.Detector) (*managerModel, error) {
 	// Load worktrees
@@ -219,6 +225,30 @@ func (m *managerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.worktreeList.SetWidth(msg.Width)
 		m.worktreeList.SetHeight(msg.Height - 8)
+		return m, nil
+
+	case WorktreeListMsg:
+		if msg.Err != nil {
+			m.setMessage(fmt.Sprintf("Failed to refresh: %v", msg.Err), true)
+			return m, nil
+		}
+
+		items := make([]list.Item, 0, len(msg.Items))
+		m.items = make([]WorktreeItem, 0, len(msg.Items))
+
+		for _, item := range msg.Items {
+			if meta, ok := m.metaStore.Get(item.Name); ok {
+				item.Metadata = meta
+			}
+			items = append(items, item)
+			m.items = append(m.items, item)
+		}
+
+		m.worktreeList.SetItems(items)
+		// Only clear message if it was "Refreshing..."
+		if m.message == "Refreshing..." {
+			m.message = ""
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -673,41 +703,38 @@ func (m *managerModel) executePrune() (tea.Model, tea.Cmd) {
 	return m.refreshList()
 }
 
+func fetchWorktreesCmd(gitMgr *git.Manager) tea.Cmd {
+	return func() tea.Msg {
+		worktrees, err := gitMgr.List()
+		if err != nil {
+			return WorktreeListMsg{Err: err}
+		}
+
+		items := make([]WorktreeItem, 0, len(worktrees))
+
+	  statuses := m.gitMgr.GetStatuses(worktrees)
+
+	  for _, wt := range worktrees {
+		  status := statuses[wt.Path]
+
+			item := WorktreeItem{
+				Name:   wt.Name,
+				Path:   wt.Path,
+				Branch: wt.Branch,
+				Status: status,
+				IsMain: wt.IsMain,
+				// Metadata will be attached in Update
+			}
+
+			items = append(items, item)
+		}
+		return WorktreeListMsg{Items: items}
+	}
+}
+
 func (m *managerModel) refreshList() (tea.Model, tea.Cmd) {
-	worktrees, err := m.gitMgr.List()
-	if err != nil {
-		m.setMessage(fmt.Sprintf("Failed to refresh: %v", err), true)
-		return m, nil
-	}
-
-	items := make([]list.Item, 0, len(worktrees))
-	m.items = make([]WorktreeItem, 0, len(worktrees))
-
-	statuses := m.gitMgr.GetStatuses(worktrees)
-
-	for _, wt := range worktrees {
-		status := statuses[wt.Path]
-
-		var meta *metadata.WorktreeMetadata
-		if mt, ok := m.metaStore.Get(wt.Name); ok {
-			meta = mt
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		m.items = append(m.items, item)
-	}
-
-	m.worktreeList.SetItems(items)
-	return m, nil
+	m.setMessage("Refreshing...", false)
+	return m, fetchWorktreesCmd(m.gitMgr)
 }
 
 func (m *managerModel) startSettingEdit() {
