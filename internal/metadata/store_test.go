@@ -9,15 +9,15 @@ import (
 
 func TestNewStore(t *testing.T) {
 	store := NewStore("/test/repo")
-	
+
 	if store.RepoPath != "/test/repo" {
 		t.Errorf("Expected RepoPath to be '/test/repo', got '%s'", store.RepoPath)
 	}
-	
+
 	if store.Worktrees == nil {
 		t.Error("Expected Worktrees map to be initialized")
 	}
-	
+
 	if len(store.Worktrees) != 0 {
 		t.Errorf("Expected empty Worktrees map, got %d items", len(store.Worktrees))
 	}
@@ -25,7 +25,7 @@ func TestNewStore(t *testing.T) {
 
 func TestAddWorktree(t *testing.T) {
 	store := NewStore("/test/repo")
-	
+
 	wt := &WorktreeMetadata{
 		Name:       "test-feature",
 		Path:       "/test/path",
@@ -33,18 +33,18 @@ func TestAddWorktree(t *testing.T) {
 		CreatedAt:  time.Now(),
 		LastOpened: time.Now(),
 	}
-	
+
 	store.Add(wt)
-	
+
 	if len(store.Worktrees) != 1 {
 		t.Errorf("Expected 1 worktree, got %d", len(store.Worktrees))
 	}
-	
+
 	retrieved, exists := store.Get("test-feature")
 	if !exists {
 		t.Error("Expected worktree to exist")
 	}
-	
+
 	if retrieved.Name != "test-feature" {
 		t.Errorf("Expected name 'test-feature', got '%s'", retrieved.Name)
 	}
@@ -52,20 +52,20 @@ func TestAddWorktree(t *testing.T) {
 
 func TestRemoveWorktree(t *testing.T) {
 	store := NewStore("/test/repo")
-	
+
 	wt := &WorktreeMetadata{
 		Name:   "test-feature",
 		Path:   "/test/path",
 		Branch: "feature/test",
 	}
-	
+
 	store.Add(wt)
 	store.Remove("test-feature")
-	
+
 	if len(store.Worktrees) != 0 {
 		t.Errorf("Expected 0 worktrees, got %d", len(store.Worktrees))
 	}
-	
+
 	_, exists := store.Get("test-feature")
 	if exists {
 		t.Error("Expected worktree to not exist")
@@ -74,20 +74,20 @@ func TestRemoveWorktree(t *testing.T) {
 
 func TestTouchWorktree(t *testing.T) {
 	store := NewStore("/test/repo")
-	
+
 	wt := &WorktreeMetadata{
 		Name:       "test-feature",
 		Path:       "/test/path",
 		Branch:     "feature/test",
 		LastOpened: time.Now().Add(-24 * time.Hour),
 	}
-	
+
 	store.Add(wt)
 	originalTime := wt.LastOpened
-	
+
 	time.Sleep(10 * time.Millisecond)
 	store.Touch("test-feature")
-	
+
 	retrieved, _ := store.Get("test-feature")
 	if !retrieved.LastOpened.After(originalTime) {
 		t.Error("Expected LastOpened to be updated")
@@ -96,7 +96,7 @@ func TestTouchWorktree(t *testing.T) {
 
 func TestGetStale(t *testing.T) {
 	store := NewStore("/test/repo")
-	
+
 	// Add fresh worktree
 	fresh := &WorktreeMetadata{
 		Name:       "fresh",
@@ -105,7 +105,7 @@ func TestGetStale(t *testing.T) {
 		LastOpened: time.Now(),
 	}
 	store.Add(fresh)
-	
+
 	// Add stale worktree
 	stale := &WorktreeMetadata{
 		Name:       "stale",
@@ -114,13 +114,13 @@ func TestGetStale(t *testing.T) {
 		LastOpened: time.Now().Add(-40 * 24 * time.Hour),
 	}
 	store.Add(stale)
-	
+
 	staleWorktrees := store.GetStale(30)
-	
+
 	if len(staleWorktrees) != 1 {
 		t.Errorf("Expected 1 stale worktree, got %d", len(staleWorktrees))
 	}
-	
+
 	if staleWorktrees[0] != "stale" {
 		t.Errorf("Expected 'stale', got '%s'", staleWorktrees[0])
 	}
@@ -133,7 +133,7 @@ func TestSaveAndLoad(t *testing.T) {
 	if err := os.MkdirAll(gitDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Create and save store
 	store := NewStore(tmpDir)
 	wt := &WorktreeMetadata{
@@ -144,26 +144,26 @@ func TestSaveAndLoad(t *testing.T) {
 		LastOpened: time.Now(),
 	}
 	store.Add(wt)
-	
+
 	if err := store.Save(); err != nil {
 		t.Fatalf("Failed to save store: %v", err)
 	}
-	
+
 	// Load store
 	loaded, err := Load(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load store: %v", err)
 	}
-	
+
 	if len(loaded.Worktrees) != 1 {
 		t.Errorf("Expected 1 worktree in loaded store, got %d", len(loaded.Worktrees))
 	}
-	
+
 	retrieved, exists := loaded.Get("test-feature")
 	if !exists {
 		t.Error("Expected worktree to exist in loaded store")
 	}
-	
+
 	if retrieved.Name != "test-feature" {
 		t.Errorf("Expected name 'test-feature', got '%s'", retrieved.Name)
 	}
@@ -175,17 +175,17 @@ func TestLoadNonExistent(t *testing.T) {
 	if err := os.MkdirAll(gitDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Load from non-existent file should create new store
 	store, err := Load(tmpDir)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
-	
+
 	if store == nil {
 		t.Fatal("Expected store to be created")
 	}
-	
+
 	if len(store.Worktrees) != 0 {
 		t.Errorf("Expected empty store, got %d worktrees", len(store.Worktrees))
 	}

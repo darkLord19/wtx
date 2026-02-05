@@ -70,8 +70,15 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 	items := make([]list.Item, 0, len(worktrees))
 	wtItems := make([]WorktreeItem, 0, len(worktrees))
 
+	// Get statuses in parallel
+	paths := make([]string, len(worktrees))
+	for i, wt := range worktrees {
+		paths[i] = wt.Path
+	}
+	statuses := gitMgr.GetStatuses(paths)
+
 	for _, wt := range worktrees {
-		status, _ := gitMgr.GetStatus(wt.Path)
+		status := statuses[wt.Path]
 
 		var meta *metadata.WorktreeMetadata
 		if m, ok := metaStore.Get(wt.Name); ok {
@@ -501,8 +508,15 @@ func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
 	items := make([]list.Item, 0, len(worktrees))
 	m.items = make([]WorktreeItem, 0, len(worktrees))
 
+	// Get statuses in parallel
+	paths := make([]string, len(worktrees))
+	for i, wt := range worktrees {
+		paths[i] = wt.Path
+	}
+	statuses := m.gitMgr.GetStatuses(paths)
+
 	for _, wt := range worktrees {
-		status, _ := m.gitMgr.GetStatus(wt.Path)
+		status := statuses[wt.Path]
 
 		var meta *metadata.WorktreeMetadata
 		if mt, ok := m.metaStore.Get(wt.Name); ok {
