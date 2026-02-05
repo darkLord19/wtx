@@ -91,12 +91,17 @@ func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}
 
+	// Fetch statuses in parallel
+	statuses := gitMgr.GetStatuses(worktrees)
+
 	// Build items
 	items := make([]list.Item, 0, len(worktrees))
 	wtItems := make([]WorktreeItem, 0, len(worktrees))
 
+	statuses := gitMgr.GetStatuses(worktrees)
+
 	for _, wt := range worktrees {
-		status, _ := gitMgr.GetStatus(wt.Path)
+		status := statuses[wt.Path]
 
 		var meta *metadata.WorktreeMetadata
 		if m, ok := metaStore.Get(wt.Name); ok {
@@ -707,8 +712,10 @@ func fetchWorktreesCmd(gitMgr *git.Manager) tea.Cmd {
 
 		items := make([]WorktreeItem, 0, len(worktrees))
 
-		for _, wt := range worktrees {
-			status, _ := gitMgr.GetStatus(wt.Path)
+	  statuses := m.gitMgr.GetStatuses(worktrees)
+
+	  for _, wt := range worktrees {
+		  status := statuses[wt.Path]
 
 			item := WorktreeItem{
 				Name:   wt.Name,
