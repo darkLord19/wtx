@@ -18,6 +18,8 @@ var (
 	gitMgr     *git.Manager
 	metaStore  *metadata.Store
 	edDetector *editor.Detector
+	fullTUI    bool
+	isFirstRun bool
 )
 
 var rootCmd = &cobra.Command{
@@ -30,6 +32,9 @@ var rootCmd = &cobra.Command{
 func init() {
 	cobra.OnInitialize(initConfig)
 
+	// Add flags
+	rootCmd.Flags().BoolVarP(&fullTUI, "tui", "t", false, "Launch full TUI with tabs (worktrees, manage, settings)")
+
 	// Add commands
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(openCmd)
@@ -38,6 +43,8 @@ func init() {
 	rootCmd.AddCommand(pruneCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(manageCmd)
+	rootCmd.AddCommand(setupCmd)
 }
 
 func initConfig() {
@@ -49,12 +56,14 @@ func initConfig() {
 		os.Exit(1)
 	}
 
-	// Load config
-	cfg, err = config.Load()
+	// Load config with first run check
+	loadResult, err := config.LoadWithFirstRunCheck()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
+	cfg = loadResult.Config
+	isFirstRun = loadResult.IsFirstRun
 
 	// Find git repo
 	repoPath, err := git.GetRootPath()
@@ -81,8 +90,31 @@ func initConfig() {
 }
 
 func runInteractive(cmd *cobra.Command, args []string) error {
-	// Run TUI selector
-	selected, err := tui.Run(gitMgr, metaStore)
+	// Check for first run and launch setup wizard
+	if isFirstRun {
+		completed, err := tui.RunSetup(cfg, edDetector)
+		if err != nil {
+			return fmt.Errorf("setup wizard failed: %w", err)
+		}
+		if !completed {
+			fmt.Println("Setup cancelled. Run 'wtx' again to complete setup.")
+			return nil
+		}
+		// Reload editor detector with new config
+		edDetector = editor.NewDetector(cfg)
+	}
+
+	var selected *tui.WorktreeItem
+	var err error
+
+	if fullTUI {
+		// Run full TUI manager with tabs
+		selected, err = tui.RunManager(gitMgr, metaStore, cfg, edDetector)
+	} else {
+		// Run simple TUI selector
+		selected, err = tui.Run(gitMgr, metaStore)
+	}
+
 	if err != nil {
 		return err
 	}

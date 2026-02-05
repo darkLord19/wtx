@@ -3,14 +3,24 @@ package main
 import (
 	"fmt"
 
+	"github.com/darkLord19/wtx/internal/tui"
 	"github.com/spf13/cobra"
+)
+
+var (
+	configTUI bool
 )
 
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "View or edit configuration",
-	Long:  "Display current configuration or set specific values",
+	Long:  "Display current configuration or launch TUI to edit settings",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Launch TUI settings editor
+		if configTUI {
+			return tui.RunSettings(cfg, edDetector)
+		}
+
 		if len(args) == 0 {
 			// Display current config
 			fmt.Println("Current configuration:")
@@ -40,13 +50,19 @@ var configCmd = &cobra.Command{
 				fmt.Printf("  • %s\n", ed.Name())
 			}
 
+			fmt.Println("\nTip: Use 'wtx config --tui' to edit settings interactively")
+
 			return nil
 		}
 
 		// TODO: Implement config set
 		fmt.Println("Setting config values not yet implemented")
-		fmt.Println("Edit ~/.config/wtx/config.json directly")
+		fmt.Println("Use 'wtx config --tui' to edit settings interactively")
 
 		return nil
 	},
+}
+
+func init() {
+	configCmd.Flags().BoolVarP(&configTUI, "tui", "t", false, "Launch TUI settings editor")
 }

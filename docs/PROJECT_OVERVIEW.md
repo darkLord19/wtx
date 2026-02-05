@@ -78,6 +78,26 @@ wtx/
 - Keyboard-driven navigation
 - Fast performance (<150ms startup)
 
+### 1.1 Full TUI Manager (wtx --tui)
+- Tab-based interface with three views:
+  - **Worktrees Tab**: Select and open worktrees
+  - **Manage Tab**: Create, delete, and prune worktrees
+  - **Settings Tab**: Configure wtx settings interactively
+- Keyboard shortcuts: 1/2/3 to switch tabs
+- All worktree operations available without leaving TUI
+
+### 1.2 TUI Settings Editor (wtx config --tui)
+- Interactive settings configuration
+- Option cycling for selection-based settings
+- Text input for custom values
+- Immediate save functionality
+
+### 1.3 Worktree Manager TUI (wtx manage)
+- Create new worktrees with name, branch, and base branch
+- Delete worktrees with safety checks
+- Prune stale worktrees with selection interface
+- Refresh worktree list
+
 ### 2. Multi-Editor Support
 - VS Code, Cursor, VSCodium
 - Neovim, Vim

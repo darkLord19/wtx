@@ -34,6 +34,9 @@ make build
 # Interactive worktree switcher (main command)
 wtx
 
+# Full TUI with tabs (worktrees, manage, settings)
+wtx --tui
+
 # Create a new worktree
 wtx add feature-auth
 
@@ -54,6 +57,15 @@ wtx prune
 
 # View/edit configuration
 wtx config
+
+# Interactive settings editor
+wtx config --tui
+
+# Worktree management TUI
+wtx manage
+
+# Run setup wizard
+wtx setup
 ```
 
 ## How It Works
@@ -115,6 +127,19 @@ wtx automatically detects and supports:
 3. Auto-detect installed editors
 4. Terminal fallback
 
+## First-Run Setup
+
+When you run `wtx` for the first time, an interactive setup wizard will guide you through:
+
+1. **Editor Selection** - Choose your preferred editor or enter a custom command
+2. **Worktree Directory** - Where to create new worktrees
+3. **Window Reuse** - Whether to reuse existing editor windows
+
+You can re-run the setup wizard anytime with:
+```bash
+wtx setup
+```
+
 ## Configuration
 
 Config file: `~/.config/wtx/config.json`
@@ -139,6 +164,8 @@ Config file: `~/.config/wtx/config.json`
 
 ## TUI Interface
 
+### Quick Selector (default)
+
 ```
 ┌──────────────────────────────────────┐
 │ Workspace Manager (your-repo)       │
@@ -150,6 +177,37 @@ Config file: `~/.config/wtx/config.json`
 ├──────────────────────────────────────┤
 │ Press enter to open • q/esc to quit │
 └──────────────────────────────────────┘
+```
+
+### Full TUI Manager
+
+Launch with `wtx --tui` or `wtx -t` for the full TUI experience with tabs:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ [1] Worktrees   [2] Manage   [3] Settings          │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  Worktrees Tab: Select and open worktrees          │
+│  Manage Tab: Create, delete, prune worktrees       │
+│  Settings Tab: Configure wtx settings              │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+**Keyboard shortcuts:**
+- `1`, `2`, `3` - Switch between tabs
+- In Manage tab: `c` create, `d` delete, `p` prune, `r` refresh
+- In Settings tab: `↑/↓` navigate, `enter` edit, `s` save
+
+### Standalone Commands
+
+```bash
+# Launch worktree management TUI
+wtx manage
+
+# Launch settings TUI
+wtx config --tui
 ```
 
 ### Status Indicators
