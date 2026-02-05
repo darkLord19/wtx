@@ -52,7 +52,10 @@ var addCmd = &cobra.Command{
 		// Ask if user wants to open now
 		fmt.Print("\nOpen in editor now? [Y/n]: ")
 		var response string
-		fmt.Scanln(&response)
+		if _, err := fmt.Scanln(&response); err != nil {
+			// treat error as "no"
+			return nil
+		}
 
 		if response == "" || response == "y" || response == "Y" {
 			ed, err := edDetector.GetPreferred()
