@@ -92,6 +92,8 @@ func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config
 	items := make([]list.Item, 0, len(worktrees))
 	wtItems := make([]WorktreeItem, 0, len(worktrees))
 
+	statuses := gitMgr.GetStatuses(worktrees)
+
 	for _, wt := range worktrees {
 		status := statuses[wt.Path]
 
