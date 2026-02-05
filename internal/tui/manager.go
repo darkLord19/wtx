@@ -618,14 +618,20 @@ func (m *managerModel) enterPruneMode() {
 	}
 
 	m.staleItems = []WorktreeItem{}
+
+	// Optimize lookup using a map (O(N) vs O(N*M))
+	itemMap := make(map[string]*WorktreeItem, len(m.items))
+	for i := range m.items {
+		itemMap[m.items[i].Name] = &m.items[i]
+	}
+
 	for _, name := range staleNames {
-		for _, item := range m.items {
-			if item.Name == name && !item.IsMain {
+		if item, ok := itemMap[name]; ok {
+			if !item.IsMain {
 				clean, _ := m.gitMgr.IsClean(item.Path)
 				if clean {
-					m.staleItems = append(m.staleItems, item)
+					m.staleItems = append(m.staleItems, *item)
 				}
-				break
 			}
 		}
 	}
