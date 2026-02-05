@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -67,28 +68,10 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 	}
 
 	// Build items
-	items := make([]list.Item, 0, len(worktrees))
-	wtItems := make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status, _ := gitMgr.GetStatus(wt.Path)
-
-		var meta *metadata.WorktreeMetadata
-		if m, ok := metaStore.Get(wt.Name); ok {
-			meta = m
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		wtItems = append(wtItems, item)
+	wtItems := buildWorktreeItems(gitMgr, metaStore, worktrees)
+	items := make([]list.Item, len(wtItems))
+	for i, item := range wtItems {
+		items[i] = item
 	}
 
 	// Create list
@@ -498,32 +481,49 @@ func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	items := make([]list.Item, 0, len(worktrees))
-	m.items = make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status, _ := m.gitMgr.GetStatus(wt.Path)
-
-		var meta *metadata.WorktreeMetadata
-		if mt, ok := m.metaStore.Get(wt.Name); ok {
-			meta = mt
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		m.items = append(m.items, item)
+	m.items = buildWorktreeItems(m.gitMgr, m.metaStore, worktrees)
+	items := make([]list.Item, len(m.items))
+	for i, item := range m.items {
+		items[i] = item
 	}
 
 	m.list.SetItems(items)
 	return m, nil
+}
+
+func buildWorktreeItems(gitMgr *git.Manager, metaStore *metadata.Store, worktrees []git.Worktree) []WorktreeItem {
+	items := make([]WorktreeItem, len(worktrees))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10) // Limit concurrency to 10
+
+	for i, wt := range worktrees {
+		wg.Add(1)
+		go func(i int, wt git.Worktree) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire token
+			defer func() { <-sem }() // Release token
+
+			status, err := gitMgr.GetStatus(wt.Path)
+
+			var meta *metadata.WorktreeMetadata
+			if m, ok := metaStore.Get(wt.Name); ok {
+				meta = m
+			}
+
+			items[i] = WorktreeItem{
+				Name:        wt.Name,
+				Path:        wt.Path,
+				Branch:      wt.Branch,
+				Status:      status,
+				StatusError: err,
+				Metadata:    meta,
+				IsMain:      wt.IsMain,
+			}
+		}(i, wt)
+	}
+
+	wg.Wait()
+	return items
 }
 
 func (m *worktreeManagerModel) setMessage(msg string, isError bool) {

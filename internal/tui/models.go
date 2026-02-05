@@ -13,6 +13,7 @@ type WorktreeItem struct {
 	Path     string
 	Branch   string
 	Status   *git.Status
+	StatusError error
 	Metadata *metadata.WorktreeMetadata
 	IsMain   bool
 }
@@ -29,6 +30,11 @@ func (w WorktreeItem) Description() string {
 	// Branch name
 	if w.Branch != "" {
 		desc += fmt.Sprintf("%s ", w.Branch)
+	}
+
+	if w.StatusError != nil {
+		desc += fmt.Sprintf("! error: %v", w.StatusError)
+		return desc
 	}
 
 	// Status indicators
