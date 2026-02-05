@@ -64,12 +64,15 @@ func NewWorktreeManagerModel(gitMgr *git.Manager, metaStore *metadata.Store) (*w
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}
 
+	// Fetch statuses in parallel
+	statuses := gitMgr.GetStatuses(worktrees)
+
 	// Build items
 	items := make([]list.Item, 0, len(worktrees))
 	wtItems := make([]WorktreeItem, 0, len(worktrees))
 
 	for _, wt := range worktrees {
-		status, _ := gitMgr.GetStatus(wt.Path)
+		status := statuses[wt.Path]
 
 		var meta *metadata.WorktreeMetadata
 		if m, ok := metaStore.Get(wt.Name); ok {
@@ -499,8 +502,10 @@ func (m *worktreeManagerModel) refreshList() (tea.Model, tea.Cmd) {
 	items := make([]list.Item, 0, len(worktrees))
 	m.items = make([]WorktreeItem, 0, len(worktrees))
 
+	statuses := m.gitMgr.GetStatuses(worktrees)
+
 	for _, wt := range worktrees {
-		status, _ := m.gitMgr.GetStatus(wt.Path)
+		status := statuses[wt.Path]
 
 		var meta *metadata.WorktreeMetadata
 		if mt, ok := m.metaStore.Get(wt.Name); ok {
