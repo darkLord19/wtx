@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Status represents the git status of a worktree
@@ -60,4 +61,54 @@ func (m *Manager) IsClean(worktreePath string) (bool, error) {
 		return false, err
 	}
 	return status.Clean, nil
+}
+
+// GetStatuses returns the status for multiple worktrees concurrently.
+// It uses a bounded worker pool to limit resource usage.
+// Returns a map of worktree path -> Status.
+func (m *Manager) GetStatuses(worktrees []Worktree) map[string]*Status {
+	results := make(map[string]*Status)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Worker pool size
+	maxWorkers := 10
+	if len(worktrees) < maxWorkers {
+		maxWorkers = len(worktrees)
+	}
+	if maxWorkers == 0 {
+		return results
+	}
+
+	workChan := make(chan Worktree, len(worktrees))
+
+	// Start workers
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for wt := range workChan {
+				status, err := m.GetStatus(wt.Path)
+				if err != nil {
+					// Mimic original behavior: if error, result is nil (missing from map)
+					continue
+				}
+
+				mu.Lock()
+				results[wt.Path] = status
+				mu.Unlock()
+			}
+		}()
+	}
+
+	// Enqueue work
+	for _, wt := range worktrees {
+		workChan <- wt
+	}
+	close(workChan)
+
+	// Wait for completion
+	wg.Wait()
+
+	return results
 }
