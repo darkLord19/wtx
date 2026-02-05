@@ -30,11 +30,9 @@ type worktreeManagerModel struct {
 	items        []WorktreeItem
 	gitMgr       *git.Manager
 	metaStore    *metadata.Store
-	action       WorktreeAction
 	width        int
 	height       int
 	quitting     bool
-	err          error
 	message      string
 	messageStyle lipgloss.Style
 

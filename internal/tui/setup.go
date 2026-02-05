@@ -221,7 +221,9 @@ func (m *setupModel) handleReuseWindowKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		m.config.ReuseWindow = m.reuseWindowValue
 		m.step = StepComplete
 		// Save config
-		m.config.Save()
+		if err := m.config.Save(); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+		}
 	}
 	return m, nil
 }
