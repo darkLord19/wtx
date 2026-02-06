@@ -38,8 +38,14 @@ func TestLoadSave(t *testing.T) {
 		os.Setenv("HOME", origHome)
 	}()
 
-	tmpDir := setupConfigDir(t)
-	expectedConfigDir := filepath.Join(tmpDir, "wtx")
+	setupConfigDir(t)
+	// On macOS, os.UserConfigDir() returns ~/Library/Application Support, not XDG_CONFIG_HOME
+	// So we need to ask os.UserConfigDir where it thinks the config dir is, rather than assuming it's in tmpDir
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("Failed to get user config dir: %v", err)
+	}
+	expectedConfigDir := filepath.Join(userConfigDir, "wtx")
 
 	t.Run("First Run", func(t *testing.T) {
 		res, err := LoadWithFirstRunCheck()

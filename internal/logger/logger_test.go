@@ -24,7 +24,7 @@ func TestInit(t *testing.T) {
 	defer func() {
 		os.Setenv("XDG_CACHE_HOME", origCache)
 		os.Setenv("HOME", origHome)
-		Close() // ensure closed
+		_ = Close() // ensure closed
 	}()
 
 	setupLoggerEnv(t)
