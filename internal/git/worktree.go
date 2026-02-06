@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 // Worktree represents a git worktree
@@ -37,83 +36,6 @@ func (m *Manager) List() ([]Worktree, error) {
 	}
 
 	return parseWorktreeList(string(output))
-}
-
-// parseWorktreeList parses the output of git worktree list --porcelain
-func parseWorktreeList(output string) ([]Worktree, error) {
-	// Pre-allocate slice by counting "worktree " lines
-	// This avoids slice reallocations as we append
-	count := strings.Count(output, "worktree ")
-	worktrees := make([]Worktree, 0, count)
-
-	var current Worktree
-	var inWorktree bool
-
-	// Iterate over lines using string slicing to avoid allocating strings for each line
-	for {
-		// Find next newline
-		nl := strings.IndexByte(output, '\n')
-		var line string
-		if nl == -1 {
-			line = output
-		} else {
-			line = output[:nl]
-		}
-
-		if line == "" {
-			if inWorktree {
-				worktrees = append(worktrees, current)
-				current = Worktree{} // Reset
-				inWorktree = false
-			}
-		} else {
-			// Find space separator
-			sp := strings.IndexByte(line, ' ')
-			if sp != -1 {
-				key := line[:sp]
-				value := line[sp+1:]
-
-				switch key {
-				case "worktree":
-					current.Path = value
-					// filepath.Base allocates, but unavoidable for Name
-					current.Name = filepath.Base(value)
-					inWorktree = true
-				case "HEAD":
-					if inWorktree {
-						current.Head = value
-					}
-				case "branch":
-					if inWorktree {
-						// value is a slice of output, so this is allocation-free
-						// if TrimPrefix returns a subslice
-						current.Branch = strings.TrimPrefix(value, "refs/heads/")
-					}
-				case "bare":
-					if inWorktree {
-						current.IsMain = true
-					}
-				}
-			}
-		}
-
-		if nl == -1 {
-			break
-		}
-		output = output[nl+1:]
-	}
-
-	// Handle the last worktree if the output didn't end with a blank line
-	if inWorktree {
-		worktrees = append(worktrees, current)
-	}
-
-	// Mark the first worktree as main if no bare repo
-	if len(worktrees) > 0 && !worktrees[0].IsMain {
-		worktrees[0].IsMain = true
-	}
-
-	return worktrees, nil
 }
 
 // Add creates a new worktree

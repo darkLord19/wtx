@@ -54,8 +54,8 @@ bare
 	// First worktree is marked as main because it's the first one and no other was marked main.
 	check(0, worktrees[0], "/path/to/main", "main", "abc1234", "main", true)
 	check(1, worktrees[1], "/path/to/feature", "feature", "def5678", "feature", false)
-	// Third worktree: 'bare' is ignored, so IsMain is false.
-	check(2, worktrees[2], "/path/to/bare", "bare", "", "", false)
+	// Third worktree: 'bare' means it's the main repo
+	check(2, worktrees[2], "/path/to/bare", "bare", "", "", true)
 }
 
 func generateWorktreeOutput(n int) string {
