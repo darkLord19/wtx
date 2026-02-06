@@ -9,6 +9,7 @@ type WorktreeMetadata struct {
 	Branch     string    `json:"branch"`
 	CreatedAt  time.Time `json:"created_at"`
 	LastOpened time.Time `json:"last_opened"`
+	OpenCount  int       `json:"open_count"`
 	DevCommand string    `json:"dev_command,omitempty"`
 	Ports      []int     `json:"ports,omitempty"`
 }
@@ -39,14 +40,6 @@ func (s *Store) Add(wt *WorktreeMetadata) {
 func (s *Store) Remove(name string) {
 	delete(s.Worktrees, name)
 	s.UpdatedAt = time.Now()
-}
-
-// Touch updates the last opened time for a worktree
-func (s *Store) Touch(name string) {
-	if wt, exists := s.Worktrees[name]; exists {
-		wt.LastOpened = time.Now()
-		s.UpdatedAt = time.Now()
-	}
 }
 
 // Get retrieves metadata for a worktree
