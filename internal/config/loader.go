@@ -81,6 +81,10 @@ func (c *Config) Save() error {
 	}
 
 	wtxConfigDir := filepath.Join(configDir, "wtx")
+	if err := os.MkdirAll(wtxConfigDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
 	v.AddConfigPath(wtxConfigDir)
 	v.SetConfigName("config")
 	v.SetConfigType("json")
@@ -92,5 +96,7 @@ func (c *Config) Save() error {
 	v.Set("auto_start_dev", c.AutoStartDev)
 	v.Set("custom_commands", c.CustomCommands)
 
-	return v.WriteConfig()
+	// We use WriteConfigAs to ensure we write to the specific file,
+	// creating it if it doesn't exist or overwriting if it does.
+	return v.WriteConfigAs(filepath.Join(wtxConfigDir, "config.json"))
 }
