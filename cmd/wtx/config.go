@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/darkLord19/wtx/internal/tui"
+	"github.com/darkLord19/wtx/internal/validation"
 	"github.com/spf13/cobra"
 )
 
@@ -113,9 +114,12 @@ var configCmd = &cobra.Command{
 				return fmt.Errorf("usage: wtx config worktree_dir <path>")
 			}
 			val := args[1]
-			if val == "" {
-				return fmt.Errorf("worktree_dir cannot be empty")
+
+			validator := validation.NewWorktreeValidator()
+			if err := validator.ValidatePath(val); err != nil {
+				return fmt.Errorf("invalid path: %w", err)
 			}
+
 			cfg.WorktreeDir = val
 			if err := cfg.Save(); err != nil {
 				return fmt.Errorf("failed to save config: %w", err)

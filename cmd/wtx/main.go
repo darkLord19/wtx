@@ -9,6 +9,7 @@ import (
 	"github.com/darkLord19/wtx/internal/config"
 	"github.com/darkLord19/wtx/internal/editor"
 	"github.com/darkLord19/wtx/internal/git"
+	"github.com/darkLord19/wtx/internal/logger"
 	"github.com/darkLord19/wtx/internal/metadata"
 	"github.com/darkLord19/wtx/internal/tui"
 )
@@ -49,6 +50,11 @@ func init() {
 
 func initConfig() {
 	var err error
+
+	// Initialize logger
+	if err := logger.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to init logger: %v\n", err)
+	}
 
 	// Check if git is installed
 	if !git.IsGitInstalled() {

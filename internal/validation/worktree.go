@@ -30,16 +30,16 @@ func (v *WorktreeValidator) ValidateName(name string) error {
 	if len(name) > 128 {
 		return fmt.Errorf("name too long (max 128 characters)")
 	}
-	
-	if !nameRegex.MatchString(name) {
-		return fmt.Errorf("name can only contain letters, numbers, hyphens, underscores, and forward slashes")
-	}
-	
+
 	// Prevent problematic names
 	if name == "." || name == ".." {
 		return fmt.Errorf("invalid name: cannot use '.' or '..'")
 	}
 	
+	if !nameRegex.MatchString(name) {
+		return fmt.Errorf("name can only contain letters, numbers, hyphens, underscores, and forward slashes")
+	}
+
 	return nil
 }
 
