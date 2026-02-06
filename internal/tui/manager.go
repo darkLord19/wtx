@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -45,15 +44,7 @@ type managerModel struct {
 	choice       *WorktreeItem
 
 	// Manage tab
-	manageMode    ManageMode
-	createInputs  [3]textinput.Model // name, branch, base
-	createFocus   int
-	deleteTarget  *WorktreeItem
-	forceDelete   bool
-	staleItems    []WorktreeItem
-	pruneCursor   int
-	pruneSelected map[int]bool
-	staleDays     int
+	manageModel *ManageModel
 
 	// Settings tab
 	settings      []SettingItem
@@ -96,6 +87,12 @@ func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config
 	// Create worktree list
 	l := CreateListModel(items, "Select Worktree")
 
+	// Initialize ManageModel
+	manageModel, err := NewManageModel(gitMgr, metaStore)
+	if err != nil {
+		return nil, err
+	}
+
 	// Initialize help panel
 	help := NewHelpPanel()
 	help.AddSection("Global", GetGlobalHelp())
@@ -103,24 +100,6 @@ func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config
 	help.AddSection("Worktrees", GetWorktreesHelp())
 	help.AddSection("Manage", GetManageHelp())
 	help.AddSection("Settings", GetSettingsHelp())
-
-	// Create text inputs for create form
-	var createInputs [3]textinput.Model
-	createInputs[0] = textinput.New()
-	createInputs[0].Placeholder = "worktree-name"
-	createInputs[0].CharLimit = 64
-	createInputs[0].Width = 30
-
-	createInputs[1] = textinput.New()
-	createInputs[1].Placeholder = "branch-name (optional)"
-	createInputs[1].CharLimit = 64
-	createInputs[1].Width = 40
-
-	createInputs[2] = textinput.New()
-	createInputs[2].Placeholder = "main"
-	createInputs[2].CharLimit = 64
-	createInputs[2].Width = 30
-	createInputs[2].SetValue("main")
 
 	// Settings input
 	settingInput := textinput.New()
@@ -182,11 +161,9 @@ func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config
 		activeTab:     TabWorktrees,
 		worktreeList:  l,
 		items:         wtItems,
-		createInputs:  createInputs,
+		manageModel:   manageModel,
 		settingInput:  settingInput,
 		settings:      settings,
-		pruneSelected: make(map[int]bool),
-		staleDays:     30,
 		help:          help,
 	}, nil
 }
@@ -202,6 +179,9 @@ func (m *managerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.worktreeList.SetWidth(msg.Width)
 		m.worktreeList.SetHeight(msg.Height - 8)
+
+		// Propagate resize to manage model
+		m.manageModel.Update(msg)
 		return m, nil
 
 	case WorktreeListMsg:
@@ -219,6 +199,10 @@ func (m *managerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.worktreeList.SetItems(items)
+
+		// Update manage model list as well (sync)
+		m.manageModel.Update(msg)
+
 		// Only clear message if it was "Refreshing..."
 		if m.message.Text() == "Refreshing..." {
 			m.message.Clear()
@@ -275,7 +259,7 @@ func (m *managerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *managerModel) isInSubMode() bool {
-	if m.activeTab == TabManage && m.manageMode != ManageModeList {
+	if m.activeTab == TabManage && m.manageModel.IsInSubMode() {
 		return true
 	}
 	if m.activeTab == TabSettings && m.settingEdit {
@@ -305,145 +289,12 @@ func (m *managerModel) updateWorktreesTab(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // Manage tab handlers
 func (m *managerModel) updateManageTab(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch m.manageMode {
-	case ManageModeList:
-		return m.updateManageList(msg)
-	case ManageModeCreate:
-		return m.updateManageCreate(msg)
-	case ManageModeDelete:
-		return m.updateManageDelete(msg)
-	case ManageModePrune:
-		return m.updateManagePrune(msg)
-	}
-	return m, nil
-}
+	// Let the manage model handle it
+	newModel, cmd := m.manageModel.Update(msg)
+	m.manageModel = newModel.(*ManageModel)
 
-func (m *managerModel) updateManageList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "esc":
-		m.quitting = true
-		return m, tea.Quit
-
-	case "c", "n":
-		m.manageMode = ManageModeCreate
-		m.createFocus = 0
-		m.createInputs[0].Focus()
-		m.createInputs[0].SetValue("")
-		m.createInputs[1].SetValue("")
-		m.createInputs[2].SetValue("main")
-		return m, nil
-
-	case "d", "x":
-		if i, ok := m.worktreeList.SelectedItem().(WorktreeItem); ok {
-			if i.IsMain {
-				m.setMessage("Cannot delete main worktree", true)
-				return m, nil
-			}
-			m.manageMode = ManageModeDelete
-			m.deleteTarget = &i
-			m.forceDelete = false
-		}
-		return m, nil
-
-	case "p":
-		m.enterPruneMode()
-		return m, nil
-
-	case "r":
-		return m.refreshList()
-	}
-
-	var cmd tea.Cmd
-	m.worktreeList, cmd = m.worktreeList.Update(msg)
+	// Check for quit signal from submodel if it were to emit one (not currently implemented, but safe)
 	return m, cmd
-}
-
-func (m *managerModel) updateManageCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.manageMode = ManageModeList
-		m.blurCreateInputs()
-		return m, nil
-
-	case "tab", "down":
-		m.createFocus = (m.createFocus + 1) % 3
-		m.updateCreateFocus()
-		return m, nil
-
-	case "shift+tab", "up":
-		m.createFocus = (m.createFocus + 2) % 3
-		m.updateCreateFocus()
-		return m, nil
-
-	case "enter":
-		if m.createFocus < 2 {
-			m.createFocus++
-			m.updateCreateFocus()
-			return m, nil
-		}
-		return m.createWorktree()
-
-	case "ctrl+s":
-		return m.createWorktree()
-	}
-
-	var cmd tea.Cmd
-	m.createInputs[m.createFocus], cmd = m.createInputs[m.createFocus].Update(msg)
-	return m, cmd
-}
-
-func (m *managerModel) updateManageDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "n":
-		m.manageMode = ManageModeList
-		m.deleteTarget = nil
-		return m, nil
-
-	case "y":
-		return m.deleteWorktree(false)
-
-	case "f":
-		return m.deleteWorktree(true)
-	}
-
-	return m, nil
-}
-
-func (m *managerModel) updateManagePrune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
-		m.manageMode = ManageModeList
-		m.staleItems = nil
-		return m, nil
-
-	case "up", "k":
-		if m.pruneCursor > 0 {
-			m.pruneCursor--
-		}
-
-	case "down", "j":
-		if m.pruneCursor < len(m.staleItems)-1 {
-			m.pruneCursor++
-		}
-
-	case " ":
-		m.pruneSelected[m.pruneCursor] = !m.pruneSelected[m.pruneCursor]
-
-	case "a":
-		for i := range m.staleItems {
-			m.pruneSelected[i] = true
-		}
-
-	case "n":
-		for i := range m.staleItems {
-			m.pruneSelected[i] = false
-		}
-
-	case "enter":
-		return m.executePrune()
-	}
-
-	return m, nil
 }
 
 // Settings tab handlers
@@ -530,158 +381,6 @@ func (m *managerModel) updateSettingEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // Helper methods
-func (m *managerModel) updateCreateFocus() {
-	m.blurCreateInputs()
-	m.createInputs[m.createFocus].Focus()
-}
-
-func (m *managerModel) blurCreateInputs() {
-	for i := range m.createInputs {
-		m.createInputs[i].Blur()
-	}
-}
-
-func (m *managerModel) createWorktree() (tea.Model, tea.Cmd) {
-	name := strings.TrimSpace(m.createInputs[0].Value())
-	if name == "" {
-		m.setMessage("Name is required", true)
-		return m, nil
-	}
-
-	branch := strings.TrimSpace(m.createInputs[1].Value())
-	if branch == "" {
-		branch = name
-	}
-
-	base := strings.TrimSpace(m.createInputs[2].Value())
-	if base == "" {
-		base = "main"
-	}
-
-	path, err := m.gitMgr.Add(name, branch, base)
-	if err != nil {
-		m.setMessage(fmt.Sprintf("Failed to create: %v", err), true)
-		return m, nil
-	}
-
-	meta := &metadata.WorktreeMetadata{
-		Name:       name,
-		Path:       path,
-		Branch:     branch,
-		CreatedAt:  time.Now(),
-		LastOpened: time.Now(),
-	}
-	m.metaStore.Add(meta)
-	if err := m.metaStore.Save(); err != nil {
-		m.setMessage(fmt.Sprintf("Warning: metadata save failed: %v", err), true)
-	}
-
-	m.manageMode = ManageModeList
-	m.blurCreateInputs()
-	m.setMessage(fmt.Sprintf("✓ Created worktree: %s", name), false)
-
-	return m.refreshList()
-}
-
-func (m *managerModel) deleteWorktree(force bool) (tea.Model, tea.Cmd) {
-	if m.deleteTarget == nil {
-		return m, nil
-	}
-
-	name := m.deleteTarget.Name
-
-	if !force {
-		clean, err := m.gitMgr.IsClean(m.deleteTarget.Path)
-		if err != nil {
-			m.setMessage(fmt.Sprintf("Failed to check status: %v", err), true)
-			m.manageMode = ManageModeList
-			m.deleteTarget = nil
-			return m, nil
-		}
-
-		if !clean {
-			m.forceDelete = true
-			return m, nil
-		}
-	}
-
-	if err := m.gitMgr.Remove(name, force); err != nil {
-		m.setMessage(fmt.Sprintf("Failed to remove: %v", err), true)
-		m.manageMode = ManageModeList
-		m.deleteTarget = nil
-		return m, nil
-	}
-
-	m.metaStore.Remove(name)
-	if err := m.metaStore.Save(); err != nil {
-		m.setMessage(fmt.Sprintf("Warning: metadata save failed: %v", err), true)
-	}
-
-	m.manageMode = ManageModeList
-	m.deleteTarget = nil
-	m.setMessage(fmt.Sprintf("✓ Removed worktree: %s", name), false)
-
-	return m.refreshList()
-}
-
-func (m *managerModel) enterPruneMode() {
-	staleNames := m.metaStore.GetStale(m.staleDays)
-
-	if len(staleNames) == 0 {
-		m.setMessage(fmt.Sprintf("No stale worktrees found (>%d days)", m.staleDays), false)
-		return
-	}
-
-	m.staleItems = []WorktreeItem{}
-	for _, name := range staleNames {
-		for _, item := range m.items {
-			if item.Name == name && !item.IsMain {
-				clean, _ := m.gitMgr.IsClean(item.Path)
-				if clean {
-					m.staleItems = append(m.staleItems, item)
-				}
-				break
-			}
-		}
-	}
-
-	if len(m.staleItems) == 0 {
-		m.setMessage(fmt.Sprintf("No clean stale worktrees found (>%d days)", m.staleDays), false)
-		return
-	}
-
-	m.manageMode = ManageModePrune
-	m.pruneCursor = 0
-	m.pruneSelected = make(map[int]bool)
-	for i := range m.staleItems {
-		m.pruneSelected[i] = true
-	}
-}
-
-func (m *managerModel) executePrune() (tea.Model, tea.Cmd) {
-	removed := 0
-	for i, item := range m.staleItems {
-		if !m.pruneSelected[i] {
-			continue
-		}
-
-		if err := m.gitMgr.Remove(item.Name, false); err != nil {
-			continue
-		}
-		m.metaStore.Remove(item.Name)
-		removed++
-	}
-
-	if err := m.metaStore.Save(); err != nil {
-		m.setMessage(fmt.Sprintf("Warning: metadata save failed: %v", err), true)
-	}
-
-	m.manageMode = ManageModeList
-	m.staleItems = nil
-	m.setMessage(fmt.Sprintf("✓ Removed %d worktree(s)", removed), false)
-
-	return m.refreshList()
-}
 
 func fetchWorktreesCmd(gitMgr *git.Manager, metaStore *metadata.Store) tea.Cmd {
 	return func() tea.Msg {
@@ -695,6 +394,7 @@ func fetchWorktreesCmd(gitMgr *git.Manager, metaStore *metadata.Store) tea.Cmd {
 
 func (m *managerModel) refreshList() (tea.Model, tea.Cmd) {
 	m.message = NewInfoMessage("Refreshing...")
+	// We use the shared command, so both models will update via the WorktreeListMsg
 	return m, fetchWorktreesCmd(m.gitMgr, m.metaStore)
 }
 
@@ -780,12 +480,11 @@ func (m *managerModel) View() string {
 		breadcrumb.Add("Worktrees")
 	case TabManage:
 		breadcrumb.Add("Manage")
-		switch m.manageMode {
-		case ManageModeCreate:
+		if m.manageModel.Mode == ManageModeCreate {
 			breadcrumb.Add("Create")
-		case ManageModeDelete:
+		} else if m.manageModel.Mode == ManageModeDelete {
 			breadcrumb.Add("Delete")
-		case ManageModePrune:
+		} else if m.manageModel.Mode == ManageModePrune {
 			breadcrumb.Add("Prune")
 		}
 	case TabSettings:
@@ -850,120 +549,8 @@ func (m *managerModel) viewWorktreesTab() string {
 }
 
 func (m *managerModel) viewManageTab() string {
-	switch m.manageMode {
-	case ManageModeCreate:
-		return m.viewCreateForm()
-	case ManageModeDelete:
-		return m.viewDeleteConfirm()
-	case ManageModePrune:
-		return m.viewPruneMode()
-	default:
-		return m.viewManageList()
-	}
-}
-
-func (m *managerModel) viewManageList() string {
-	var b strings.Builder
-	b.WriteString(m.worktreeList.View())
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("c create • d delete • p prune • r refresh • q quit"))
-	return b.String()
-}
-
-func (m *managerModel) viewCreateForm() string {
-	var b strings.Builder
-
-	title := titleStyle.Render("📁 Create New Worktree")
-	b.WriteString(title)
-	b.WriteString("\n\n")
-
-	labels := []string{"Name:", "Branch (optional):", "Base branch:"}
-	for i, label := range labels {
-		labelStyle := lipgloss.NewStyle()
-		if i == m.createFocus {
-			labelStyle = labelStyle.Foreground(lipgloss.Color("#7D56F4")).Bold(true)
-			label = "▸ " + label
-		} else {
-			label = "  " + label
-		}
-		b.WriteString(fmt.Sprintf("%s\n  %s\n\n", labelStyle.Render(label), m.createInputs[i].View()))
-	}
-
-	b.WriteString(helpStyle.Render("tab next • ctrl+s create • esc cancel"))
-	return b.String()
-}
-
-func (m *managerModel) viewDeleteConfirm() string {
-	var b strings.Builder
-
-	title := titleStyle.Render("🗑  Delete Worktree")
-	b.WriteString(title)
-	b.WriteString("\n\n")
-
-	if m.deleteTarget != nil {
-		b.WriteString(fmt.Sprintf("Worktree: %s\n", lipgloss.NewStyle().Bold(true).Render(m.deleteTarget.Name)))
-		b.WriteString(fmt.Sprintf("Path:     %s\n", m.deleteTarget.Path))
-		b.WriteString(fmt.Sprintf("Branch:   %s\n\n", m.deleteTarget.Branch))
-
-		if m.forceDelete {
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF6B6B")).
-				Bold(true).
-				Render("⚠  This worktree has uncommitted changes!"))
-			b.WriteString("\n\n")
-			b.WriteString("f force delete • n/esc cancel\n")
-		} else {
-			b.WriteString("Delete this worktree?\n\n")
-			b.WriteString("y confirm • n/esc cancel\n")
-		}
-	}
-
-	return b.String()
-}
-
-func (m *managerModel) viewPruneMode() string {
-	var b strings.Builder
-
-	title := titleStyle.Render(fmt.Sprintf("🧹 Prune Stale Worktrees (>%d days)", m.staleDays))
-	b.WriteString(title)
-	b.WriteString("\n\n")
-
-	for i, item := range m.staleItems {
-		cursor := "  "
-		if i == m.pruneCursor {
-			cursor = "▸ "
-		}
-
-		checkbox := "[ ]"
-		if m.pruneSelected[i] {
-			checkbox = "[✓]"
-		}
-
-		name := item.Name
-		if i == m.pruneCursor {
-			name = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Render(name)
-		}
-
-		lastOpened := ""
-		if item.Metadata != nil {
-			lastOpened = fmt.Sprintf(" (last: %s)", item.Metadata.LastOpened.Format("2006-01-02"))
-		}
-
-		b.WriteString(fmt.Sprintf("%s%s %s%s\n", cursor, checkbox, name,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render(lastOpened)))
-	}
-
-	selected := 0
-	for _, v := range m.pruneSelected {
-		if v {
-			selected++
-		}
-	}
-
-	b.WriteString(fmt.Sprintf("\n%d of %d selected\n", selected, len(m.staleItems)))
-	b.WriteString(helpStyle.Render("\n↑/↓ navigate • space toggle • a all • n none • enter delete • esc cancel"))
-
-	return b.String()
+	// Delegate to the shared component
+	return m.manageModel.View()
 }
 
 func (m *managerModel) viewSettingsTab() string {
