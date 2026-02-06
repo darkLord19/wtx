@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,46 +20,12 @@ type model struct {
 
 // NewSelector creates a new TUI selector
 func NewSelector(gitMgr *git.Manager, metaStore *metadata.Store) (*model, error) {
-	// Load worktrees
-	worktrees, err := gitMgr.List()
+	items, wtItems, err := LoadWorktreeItems(gitMgr, metaStore)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+		return nil, err
 	}
 
-	// Fetch statuses in parallel
-	statuses := gitMgr.GetStatuses(worktrees)
-
-	// Build items
-	items := make([]list.Item, 0, len(worktrees))
-	wtItems := make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status := statuses[wt.Path]
-
-		var meta *metadata.WorktreeMetadata
-		if m, ok := metaStore.Get(wt.Name); ok {
-			meta = m
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		wtItems = append(wtItems, item)
-	}
-
-	// Create list
-	delegate := list.NewDefaultDelegate()
-	l := list.New(items, delegate, 0, 0)
-	l.Title = "Workspace Manager"
-	l.Styles.Title = titleStyle
-	l.SetFilteringEnabled(true)
+	l := CreateListModel(items, "Workspace Manager")
 
 	return &model{
 		list:      l,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/darkLord19/wtx/internal/metadata"
+	"github.com/darkLord19/wtx/internal/validation"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,14 @@ var addCmd = &cobra.Command{
 		branch := name
 		if len(args) == 2 {
 			branch = args[1]
+		}
+
+		validator := validation.NewWorktreeValidator()
+		if err := validator.ValidateName(name); err != nil {
+			return err
+		}
+		if err := validator.ValidateBranchName(branch); err != nil {
+			return err
 		}
 
 		fmt.Printf("Creating worktree '%s' for branch '%s'...\n", name, branch)

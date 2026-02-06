@@ -63,8 +63,10 @@ type managerModel struct {
 	optionCursor  int
 
 	// Messages
-	message      string
-	messageStyle lipgloss.Style
+	message Message
+
+	// Help
+	help *HelpPanel
 }
 
 // ManageMode represents the current mode in the manage tab
@@ -86,45 +88,21 @@ type WorktreeListMsg struct {
 // NewManagerModel creates a new manager TUI model
 func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config.Config, edDetector *editor.Detector) (*managerModel, error) {
 	// Load worktrees
-	worktrees, err := gitMgr.List()
+	items, wtItems, err := LoadWorktreeItems(gitMgr, metaStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}
 
-	// Fetch statuses in parallel
-	statuses := gitMgr.GetStatuses(worktrees)
-
-	// Build items
-	items := make([]list.Item, 0, len(worktrees))
-	wtItems := make([]WorktreeItem, 0, len(worktrees))
-
-	for _, wt := range worktrees {
-		status := statuses[wt.Path]
-
-		var meta *metadata.WorktreeMetadata
-		if m, ok := metaStore.Get(wt.Name); ok {
-			meta = m
-		}
-
-		item := WorktreeItem{
-			Name:     wt.Name,
-			Path:     wt.Path,
-			Branch:   wt.Branch,
-			Status:   status,
-			Metadata: meta,
-			IsMain:   wt.IsMain,
-		}
-
-		items = append(items, item)
-		wtItems = append(wtItems, item)
-	}
-
 	// Create worktree list
-	delegate := list.NewDefaultDelegate()
-	l := list.New(items, delegate, 0, 0)
-	l.Title = "Select Worktree"
-	l.Styles.Title = titleStyle
-	l.SetFilteringEnabled(true)
+	l := CreateListModel(items, "Select Worktree")
+
+	// Initialize help panel
+	help := NewHelpPanel()
+	help.AddSection("Global", GetGlobalHelp())
+	help.AddSection("Navigation", GetNavigationHelp())
+	help.AddSection("Worktrees", GetWorktreesHelp())
+	help.AddSection("Manage", GetManageHelp())
+	help.AddSection("Settings", GetSettingsHelp())
 
 	// Create text inputs for create form
 	var createInputs [3]textinput.Model
@@ -209,6 +187,7 @@ func NewManagerModel(gitMgr *git.Manager, metaStore *metadata.Store, cfg *config
 		settings:      settings,
 		pruneSelected: make(map[int]bool),
 		staleDays:     30,
+		help:          help,
 	}, nil
 }
 
@@ -235,26 +214,29 @@ func (m *managerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.items = make([]WorktreeItem, 0, len(msg.Items))
 
 		for _, item := range msg.Items {
-			if meta, ok := m.metaStore.Get(item.Name); ok {
-				item.Metadata = meta
-			}
 			items = append(items, item)
 			m.items = append(m.items, item)
 		}
 
 		m.worktreeList.SetItems(items)
 		// Only clear message if it was "Refreshing..."
-		if m.message == "Refreshing..." {
-			m.message = ""
+		if m.message.Text() == "Refreshing..." {
+			m.message.Clear()
 		}
 		return m, nil
 
 	case tea.KeyMsg:
 		// Clear message on any key
-		m.message = ""
+		if !m.message.IsEmpty() {
+			m.message.Clear()
+		}
 
 		// Global keys
 		switch msg.String() {
+		case "?":
+			m.help.Toggle()
+			return m, nil
+
 		case "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
@@ -701,38 +683,19 @@ func (m *managerModel) executePrune() (tea.Model, tea.Cmd) {
 	return m.refreshList()
 }
 
-func fetchWorktreesCmd(gitMgr *git.Manager) tea.Cmd {
+func fetchWorktreesCmd(gitMgr *git.Manager, metaStore *metadata.Store) tea.Cmd {
 	return func() tea.Msg {
-		worktrees, err := gitMgr.List()
+		_, wtItems, err := LoadWorktreeItems(gitMgr, metaStore)
 		if err != nil {
 			return WorktreeListMsg{Err: err}
 		}
-
-		items := make([]WorktreeItem, 0, len(worktrees))
-
-	  statuses := gitMgr.GetStatuses(worktrees)
-
-	  for _, wt := range worktrees {
-		  status := statuses[wt.Path]
-
-			item := WorktreeItem{
-				Name:   wt.Name,
-				Path:   wt.Path,
-				Branch: wt.Branch,
-				Status: status,
-				IsMain: wt.IsMain,
-				// Metadata will be attached in Update
-			}
-
-			items = append(items, item)
-		}
-		return WorktreeListMsg{Items: items}
+		return WorktreeListMsg{Items: wtItems}
 	}
 }
 
 func (m *managerModel) refreshList() (tea.Model, tea.Cmd) {
-	m.setMessage("Refreshing...", false)
-	return m, fetchWorktreesCmd(m.gitMgr)
+	m.message = NewInfoMessage("Refreshing...")
+	return m, fetchWorktreesCmd(m.gitMgr, m.metaStore)
 }
 
 func (m *managerModel) startSettingEdit() {
@@ -791,11 +754,10 @@ func (m *managerModel) saveSettings() {
 }
 
 func (m *managerModel) setMessage(msg string, isError bool) {
-	m.message = msg
 	if isError {
-		m.messageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B"))
+		m.message = NewErrorMessage(msg)
 	} else {
-		m.messageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
+		m.message = NewSuccessMessage(msg)
 	}
 }
 
@@ -804,7 +766,36 @@ func (m *managerModel) View() string {
 		return ""
 	}
 
+	// If help is visible, show it overlaying everything
+	if m.help.IsVisible() {
+		return m.help.Render(m.width)
+	}
+
 	var b strings.Builder
+
+	// Breadcrumb
+	breadcrumb := NewBreadcrumb("wtx")
+	switch m.activeTab {
+	case TabWorktrees:
+		breadcrumb.Add("Worktrees")
+	case TabManage:
+		breadcrumb.Add("Manage")
+		switch m.manageMode {
+		case ManageModeCreate:
+			breadcrumb.Add("Create")
+		case ManageModeDelete:
+			breadcrumb.Add("Delete")
+		case ManageModePrune:
+			breadcrumb.Add("Prune")
+		}
+	case TabSettings:
+		breadcrumb.Add("Settings")
+		if m.settingEdit {
+			breadcrumb.Add("Edit")
+		}
+	}
+	b.WriteString(breadcrumb.Render())
+	b.WriteString("\n\n")
 
 	// Tab bar
 	b.WriteString(m.renderTabBar())
@@ -821,9 +812,9 @@ func (m *managerModel) View() string {
 	}
 
 	// Message
-	if m.message != "" {
+	if !m.message.IsEmpty() {
 		b.WriteString("\n")
-		b.WriteString(m.messageStyle.Render(m.message))
+		b.WriteString(m.message.Render())
 	}
 
 	return b.String()
