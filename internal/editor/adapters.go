@@ -5,6 +5,11 @@ import (
 	"os/exec"
 )
 
+var (
+	execLookPath = exec.LookPath
+	execCommand  = exec.Command
+)
+
 // VSCodeEditor implements the Editor interface for VS Code
 type VSCodeEditor struct{}
 
@@ -13,7 +18,7 @@ func (e *VSCodeEditor) Name() string {
 }
 
 func (e *VSCodeEditor) Installed() bool {
-	_, err := exec.LookPath("code")
+	_, err := execLookPath("code")
 	return err == nil
 }
 
@@ -23,7 +28,7 @@ func (e *VSCodeEditor) Open(path string, reuseWindow bool) error {
 		args = append([]string{"-r"}, args...)
 	}
 
-	cmd := exec.Command("code", args...)
+	cmd := execCommand("code", args...)
 	return cmd.Start()
 }
 
@@ -35,7 +40,7 @@ func (e *CursorEditor) Name() string {
 }
 
 func (e *CursorEditor) Installed() bool {
-	_, err := exec.LookPath("cursor")
+	_, err := execLookPath("cursor")
 	return err == nil
 }
 
@@ -45,7 +50,7 @@ func (e *CursorEditor) Open(path string, reuseWindow bool) error {
 		args = append([]string{"-r"}, args...)
 	}
 
-	cmd := exec.Command("cursor", args...)
+	cmd := execCommand("cursor", args...)
 	return cmd.Start()
 }
 
@@ -57,7 +62,7 @@ func (e *VSCodiumEditor) Name() string {
 }
 
 func (e *VSCodiumEditor) Installed() bool {
-	_, err := exec.LookPath("codium")
+	_, err := execLookPath("codium")
 	return err == nil
 }
 
@@ -67,7 +72,7 @@ func (e *VSCodiumEditor) Open(path string, reuseWindow bool) error {
 		args = append([]string{"-r"}, args...)
 	}
 
-	cmd := exec.Command("codium", args...)
+	cmd := execCommand("codium", args...)
 	return cmd.Start()
 }
 
@@ -79,12 +84,12 @@ func (e *NeovimEditor) Name() string {
 }
 
 func (e *NeovimEditor) Installed() bool {
-	_, err := exec.LookPath("nvim")
+	_, err := execLookPath("nvim")
 	return err == nil
 }
 
 func (e *NeovimEditor) Open(path string, reuseWindow bool) error {
-	cmd := exec.Command("nvim", path)
+	cmd := execCommand("nvim", path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -99,12 +104,12 @@ func (e *VimEditor) Name() string {
 }
 
 func (e *VimEditor) Installed() bool {
-	_, err := exec.LookPath("vim")
+	_, err := execLookPath("vim")
 	return err == nil
 }
 
 func (e *VimEditor) Open(path string, reuseWindow bool) error {
-	cmd := exec.Command("vim", path)
+	cmd := execCommand("vim", path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

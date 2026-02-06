@@ -392,12 +392,6 @@ func fetchWorktreesCmd(gitMgr *git.Manager, metaStore *metadata.Store) tea.Cmd {
 	}
 }
 
-func (m *managerModel) refreshList() (tea.Model, tea.Cmd) {
-	m.message = NewInfoMessage("Refreshing...")
-	// We use the shared command, so both models will update via the WorktreeListMsg
-	return m, fetchWorktreesCmd(m.gitMgr, m.metaStore)
-}
-
 func (m *managerModel) startSettingEdit() {
 	m.settingEdit = true
 	setting := m.settings[m.settingCursor]
